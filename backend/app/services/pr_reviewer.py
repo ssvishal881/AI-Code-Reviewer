@@ -1,0 +1,218 @@
+from app.services.ai_reviewer import review_code
+from app.services.review_processor import (
+    calculate_score,
+    remove_duplicates,
+)
+from app.services.static_analyzer import run_eslint
+from app.services.semgrep_analyzer import run_semgrep
+from app.services.analyzer_router import get_analyzers
+
+
+def build_review_input(file: dict) -> str:
+    patch = file.get("patch", "")
+    content = file.get("content", "")
+
+    return f"""
+You are reviewing a GitHub Pull Request.
+
+FILE:
+{file["file"]}
+
+CHANGED CODE / DIFF:
+{patch}
+
+FULL FILE:
+{content}
+
+Review primarily the code introduced or modified by this Pull Request.
+
+Use the full file only for understanding surrounding context.
+
+IMPORTANT:
+- Report line numbers using the original full file line numbers.
+- Do not report patch line numbers.
+- Focus on real bugs, security problems, code-quality problems, and performance problems caused by or related to the changed code.
+- Do not report unrelated existing problems unless the changed code affects them.
+"""
+
+
+def get_code_snippet(
+    code: str,
+    line: int,
+    context: int = 2,
+) -> str:
+    lines = code.splitlines()
+
+    if not lines:
+        return ""
+
+    target_index = max(0, line - 1)
+
+    start = max(0, target_index - context)
+    end = min(len(lines), target_index + context + 1)
+
+    snippet_lines = []
+
+    for index in range(start, end):
+        snippet_lines.append(f"{index + 1:>4} | {lines[index]}")
+
+    return "\n".join(snippet_lines)
+
+
+def review_pull_request(files: list):
+    all_issues = []
+    file_reviews = []
+
+    for file in files:
+        file_name = file.get("file")
+        content = file.get("content", "")
+
+        if not file.get("reviewable", False):
+            file_reviews.append(
+                {
+                    "file": file_name,
+                    "status": file["status"],
+                    "additions": file["additions"],
+                    "deletions": file["deletions"],
+                    "score": 100,
+                    "summary": file.get(
+                        "reason",
+                        "File was not reviewed.",
+                    ),
+                    "issues": [],
+                }
+            )
+            continue
+
+        analyzers = get_analyzers(file_name)
+        ai_result = {
+            "score": 100,
+            "summary": "No AI review performed.",
+            "issues": [],
+        }
+        eslint_issues = []
+        semgrep_issues = []
+
+        if "ai" in analyzers:
+            review_input = build_review_input(file)
+            ai_result = review_code(
+                code=review_input,
+                file_name=file_name,
+            )
+
+        if "eslint" in analyzers:
+            eslint_issues = run_eslint(
+                code=content,
+                file_name=file_name,
+            )
+
+        if "semgrep" in analyzers:
+            semgrep_issues = run_semgrep(
+                code=content,
+                file_name=file_name,
+            )
+
+        file_issues = ai_result.get("issues", []) + eslint_issues + semgrep_issues
+        for issue in file_issues:
+            issue["code_snippet"] = get_code_snippet(
+                content,
+                issue.get("line", 1),
+            )
+
+        file_issues = remove_duplicates(file_issues)
+        file_score = calculate_score(file_issues)
+
+        file_reviews.append(
+            {
+                "file": file_name,
+                "status": file.get("status"),
+                "additions": file.get("additions", 0),
+                "deletions": file.get("deletions", 0),
+                "score": file_score,
+                "summary": ai_result.get("summary", "No issues detected."),
+                "issues": file_issues,
+            }
+        )
+
+        all_issues.extend(file_issues)
+
+    combined_issues = remove_duplicates(all_issues)
+    final_score = calculate_score(combined_issues)
+
+    return {
+        "score": final_score,
+        "issues": combined_issues,
+        "files": file_reviews,
+    }
+
+
+def build_pr_review_comment(review: dict):
+    lines = []
+
+    lines.append("<!-- ai-code-reviewer -->")
+    lines.append("# 🤖 AI Code Review")
+    lines.append("")
+    lines.append(f"**Overall Score:** {review['score']}/100")
+    lines.append(f"**Issues Found:** {len(review['issues'])}")
+    lines.append("")
+
+    if not review["issues"]:
+        lines.append("No issues were detected.")
+    else:
+        lines.append("# Issues")
+        lines.append("")
+
+        for issue in review["issues"]:
+            lines.append(f"- **{issue['severity'].upper()}** " f"{issue['title']}")
+            lines.append(f"  - File: `{issue['file']}`")
+            lines.append(f"  - Line: {issue['line']}")
+            lines.append(f"  - {issue['description']}")
+            lines.append(f"  - **Suggestion:** " f"{issue['suggestion']}")
+            lines.append(f"  - Source: {issue['source']}")
+            lines.append("")
+
+    lines.append("---")
+    lines.append("Generated by **AI Code Reviewer**.")
+
+    return "\n".join(lines)
+
+
+def build_github_review_summary(review: dict):
+    lines = []
+
+    lines.append("<!-- ai-code-reviewer -->")
+    lines.append("# AI Code Review")
+    lines.append("")
+    lines.append(f"**Overall Score:** {review['score']}/100")
+    lines.append(f"**Issues Found:** {len(review['issues'])}")
+    lines.append("")
+
+    if not review["issues"]:
+        lines.append("No issues were detected.")
+    else:
+        lines.append("## Review Summary")
+        lines.append("")
+
+        severity_counts = {}
+
+        for issue in review["issues"]:
+            severity = issue.get(
+                "severity",
+                "INFO",
+            ).upper()
+
+            severity_counts[severity] = severity_counts.get(severity, 0) + 1
+
+        for severity, count in severity_counts.items():
+            lines.append(f"- **{severity}:** {count}")
+
+        lines.append("")
+        lines.append(
+            "Detailed findings are attached as " "inline comments on the changed lines."
+        )
+
+    lines.append("")
+    lines.append("---")
+    lines.append("Generated by **AI Code Reviewer**.")
+
+    return "\n".join(lines)

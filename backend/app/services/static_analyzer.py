@@ -21,12 +21,15 @@ def run_eslint(code: str, file_name: str):
 
         result = subprocess.run(
             [
-                "npx.cmd",
+                "npx",
                 "eslint",
-                str(temp_file.relative_to(frontend_dir)),
-                "-f",
+                "--stdin",
+                "--stdin-filename",
+                file_name,
+                "--format",
                 "json",
             ],
+            input=code,
             capture_output=True,
             text=True,
             cwd=frontend_dir,

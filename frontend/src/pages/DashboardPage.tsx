@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { getUserReviews } from "../services/api";
 import type { ReviewHistoryItem } from "../types/review";
+import { useGlobalLoader } from "../context/LoaderContext";
 
 type CurrentUser = {
   id: number;
@@ -56,6 +57,7 @@ function DashboardPage() {
   const [reviews, setReviews] = useState<ReviewHistoryItem[]>([]);
   const [loading, setLoading] = useState(session.user !== null);
   const [error, setError] = useState(session.error);
+  const { showLoader, hideLoader } = useGlobalLoader();
 
   useEffect(() => {
     if (!user) {
@@ -65,6 +67,8 @@ function DashboardPage() {
     let ignore = false;
 
     const loadReviews = async () => {
+      showLoader("Loading your dashboard...");
+
       try {
         const data = await getUserReviews(user.id);
 
@@ -79,6 +83,8 @@ function DashboardPage() {
         if (!ignore) {
           setLoading(false);
         }
+
+        hideLoader();
       }
     };
 
@@ -87,7 +93,7 @@ function DashboardPage() {
     return () => {
       ignore = true;
     };
-  }, [user]);
+  }, [user, showLoader, hideLoader]);
 
   const statistics = useMemo(() => {
     const totalReviews = reviews.length;

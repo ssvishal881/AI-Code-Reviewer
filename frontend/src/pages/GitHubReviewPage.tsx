@@ -1,5 +1,5 @@
 import { AlertCircle, Play } from "lucide-react";
-
+import { useGlobalLoader } from "../context/LoaderContext";
 import { useState, useEffect } from "react";
 
 import {
@@ -28,25 +28,28 @@ function GitHubReviewPage() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const { showLoader, hideLoader } = useGlobalLoader();
 
   useEffect(() => {
     async function loadRepositories() {
+      showLoader("Loading GitHub repositories...");
+
       try {
         setRepositoriesLoading(true);
         setRepositoryError("");
 
         const data = await getGitHubRepositories();
-
         setRepositories(data);
       } catch {
         setRepositoryError("Failed to load GitHub repositories.");
       } finally {
         setRepositoriesLoading(false);
+        hideLoader();
       }
     }
 
     loadRepositories();
-  }, []);
+  }, [showLoader, hideLoader]);
 
   const clearPullRequestSelection = () => {
     setPullRequests([]);
@@ -60,25 +63,39 @@ function GitHubReviewPage() {
       return;
     }
 
-    async function loadPullRequests() {
-      try {
-        setPullRequestsLoading(true);
-        setPullRequestError("");
-        setPullNumber("");
+    let cancelled = false;
 
+    async function loadPullRequests() {
+      showLoader("Loading GitHub pull requests...");
+      setPullRequestsLoading(true);
+      setPullRequestError("");
+
+      try {
         const data = await getGitHubPullRequests(owner, repo);
 
-        setPullRequests(data);
+        if (!cancelled) {
+          setPullRequests(data);
+        }
       } catch {
-        setPullRequests([]);
-        setPullRequestError("Failed to load Pull Requests.");
+        if (!cancelled) {
+          setPullRequests([]);
+          setPullRequestError("Failed to load Pull Requests.");
+        }
       } finally {
-        setPullRequestsLoading(false);
+        if (!cancelled) {
+          setPullRequestsLoading(false);
+        }
+
+        hideLoader();
       }
     }
 
     loadPullRequests();
-  }, [owner, repo]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [owner, repo, showLoader, hideLoader]);
 
   async function handleReview() {
     if (!owner || !repo || !pullNumber) {
@@ -86,19 +103,20 @@ function GitHubReviewPage() {
       return;
     }
 
+    setLoading(true);
+    setError("");
+    setResult(null);
+    showLoader("Reviewing GitHub pull request...");
+
     try {
-      setLoading(true);
-      setError("");
-      setResult(null);
-
       const data = await reviewPullRequest(owner, repo, Number(pullNumber));
-
       setResult(data);
     } catch (error) {
       console.error("HANDLE REVIEW ERROR:", error);
       setError("Failed to review Pull Request.");
     } finally {
       setLoading(false);
+      hideLoader();
     }
   }
 

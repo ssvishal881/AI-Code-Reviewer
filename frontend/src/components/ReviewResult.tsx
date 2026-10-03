@@ -314,12 +314,12 @@ function ReviewResult({ review }: Props) {
         </div>
 
         <div className="p-4">
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
             <div
               className={`rounded-lg border p-4 ${scoreTheme.border} ${scoreTheme.bg} ${scoreTheme.glow}`}
             >
-              <div className="flex items-center justify-between gap-3">
-                <div>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
                   <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.04em] text-[#849495]">
                     OVERALL SCORE
                   </p>
@@ -335,8 +335,11 @@ function ReviewResult({ review }: Props) {
                   </p>
                 </div>
 
-                <div className="relative h-20 w-20 shrink-0">
-                  <svg className="h-20 w-20 -rotate-90" viewBox="0 0 100 100">
+                <div className="relative h-16 w-16 shrink-0 sm:h-20 sm:w-20">
+                  <svg
+                    className="h-full w-full -rotate-90"
+                    viewBox="0 0 100 100"
+                  >
                     <circle
                       cx="50"
                       cy="50"

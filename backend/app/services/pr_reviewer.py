@@ -16,7 +16,7 @@ def build_review_input(file: dict) -> str:
 You are reviewing a GitHub Pull Request.
 
 FILE:
-{file["file"]}
+{file.get("file", "Unknown file")}
 
 CHANGED CODE / DIFF:
 {patch}
@@ -46,8 +46,12 @@ def get_code_snippet(
     if not lines:
         return ""
 
-    target_index = max(0, line - 1)
+    try:
+        line = int(line)
+    except (TypeError, ValueError):
+        line = 1
 
+    target_index = max(0, min(line - 1, len(lines) - 1))
     start = max(0, target_index - context)
     end = min(len(lines), target_index + context + 1)
 
@@ -59,21 +63,41 @@ def get_code_snippet(
     return "\n".join(snippet_lines)
 
 
+def run_analyzer_safely(
+    analyzer,
+    code: str,
+    file_name: str,
+    analyzer_name: str,
+) -> tuple[list, str | None]:
+    try:
+        issues = analyzer(
+            code=code,
+            file_name=file_name,
+        )
+
+        if not isinstance(issues, list):
+            return [], f"{analyzer_name} returned an invalid response."
+
+        return issues, None
+    except Exception as exc:
+        return [], f"{analyzer_name} analysis failed: {str(exc)}"
+
+
 def review_pull_request(files: list):
     all_issues = []
     file_reviews = []
 
     for file in files:
-        file_name = file.get("file")
+        file_name = file.get("file", "Unknown file")
         content = file.get("content", "")
 
         if not file.get("reviewable", False):
             file_reviews.append(
                 {
                     "file": file_name,
-                    "status": file["status"],
-                    "additions": file["additions"],
-                    "deletions": file["deletions"],
+                    "status": file.get("status", "unknown"),
+                    "additions": file.get("additions", 0),
+                    "deletions": file.get("deletions", 0),
                     "score": 100,
                     "summary": file.get(
                         "reason",
@@ -85,35 +109,89 @@ def review_pull_request(files: list):
             continue
 
         analyzers = get_analyzers(file_name)
+
         ai_result = {
+            "success": True,
             "score": 100,
             "summary": "No AI review performed.",
             "issues": [],
         }
+
+        analysis_warnings = []
         eslint_issues = []
         semgrep_issues = []
 
         if "ai" in analyzers:
-            review_input = build_review_input(file)
-            ai_result = review_code(
-                code=review_input,
-                file_name=file_name,
-            )
+            try:
+                review_input = build_review_input(file)
+                result = review_code(
+                    code=review_input,
+                    file_name=file_name,
+                )
+
+                if isinstance(result, dict):
+                    ai_result = result
+                else:
+                    ai_result = {
+                        "success": False,
+                        "score": 0,
+                        "summary": "AI returned an invalid review response.",
+                        "issues": [],
+                    }
+            except Exception as exc:
+                ai_result = {
+                    "success": False,
+                    "score": 0,
+                    "summary": f"AI review failed: {str(exc)}",
+                    "issues": [],
+                }
+
+            if not ai_result.get("success", False):
+                analysis_warnings.append(
+                    "AI review failed; findings may be incomplete."
+                )
 
         if "eslint" in analyzers:
-            eslint_issues = run_eslint(
+            eslint_issues, eslint_error = run_analyzer_safely(
+                analyzer=run_eslint,
                 code=content,
                 file_name=file_name,
+                analyzer_name="ESLint",
             )
+
+            if eslint_error:
+                analysis_warnings.append(eslint_error)
 
         if "semgrep" in analyzers:
-            semgrep_issues = run_semgrep(
+            semgrep_issues, semgrep_error = run_analyzer_safely(
+                analyzer=run_semgrep,
                 code=content,
                 file_name=file_name,
+                analyzer_name="Semgrep",
             )
 
-        file_issues = ai_result.get("issues", []) + eslint_issues + semgrep_issues
+            if semgrep_error:
+                analysis_warnings.append(
+                    f"{semgrep_error} Security analysis may be incomplete."
+                )
+
+        ai_issues = ai_result.get("issues", [])
+        if not isinstance(ai_issues, list):
+            ai_issues = []
+            analysis_warnings.append("AI returned an invalid issues list.")
+
+        file_issues = ai_issues + eslint_issues + semgrep_issues
+
         for issue in file_issues:
+            if not isinstance(issue, dict):
+                continue
+
+            issue["file"] = issue.get("file") or file_name
+            issue["title"] = issue.get("title") or "Review finding"
+            issue["severity"] = str(issue.get("severity") or "low").lower()
+            issue["description"] = issue.get("description") or ""
+            issue["suggestion"] = issue.get("suggestion") or ""
+            issue["source"] = issue.get("source") or "Unknown"
             issue["code_snippet"] = get_code_snippet(
                 content,
                 issue.get("line", 1),
@@ -122,14 +200,19 @@ def review_pull_request(files: list):
         file_issues = remove_duplicates(file_issues)
         file_score = calculate_score(file_issues)
 
+        summary = ai_result.get("summary") or "Review completed."
+
+        if analysis_warnings:
+            summary = f"{summary} " + " ".join(analysis_warnings)
+
         file_reviews.append(
             {
                 "file": file_name,
-                "status": file.get("status"),
+                "status": file.get("status", "unknown"),
                 "additions": file.get("additions", 0),
                 "deletions": file.get("deletions", 0),
                 "score": file_score,
-                "summary": ai_result.get("summary", "No issues detected."),
+                "summary": summary,
                 "issues": file_issues,
             }
         )
@@ -149,26 +232,33 @@ def review_pull_request(files: list):
 def build_pr_review_comment(review: dict):
     lines = []
 
+    issues = review.get("issues", [])
+
     lines.append("<!-- ai-code-reviewer -->")
     lines.append("# 🤖 AI Code Review")
     lines.append("")
-    lines.append(f"**Overall Score:** {review['score']}/100")
-    lines.append(f"**Issues Found:** {len(review['issues'])}")
+    lines.append(f"**Overall Score:** {review.get('score', 100)}/100")
+    lines.append(f"**Issues Found:** {len(issues)}")
     lines.append("")
 
-    if not review["issues"]:
+    if not issues:
         lines.append("No issues were detected.")
     else:
         lines.append("# Issues")
         lines.append("")
 
-        for issue in review["issues"]:
-            lines.append(f"- **{issue['severity'].upper()}** " f"{issue['title']}")
-            lines.append(f"  - File: `{issue['file']}`")
-            lines.append(f"  - Line: {issue['line']}")
-            lines.append(f"  - {issue['description']}")
-            lines.append(f"  - **Suggestion:** " f"{issue['suggestion']}")
-            lines.append(f"  - Source: {issue['source']}")
+        for issue in issues:
+            lines.append(
+                f"- **{str(issue.get('severity', 'low')).upper()}** "
+                f"{issue.get('title', 'Review finding')}"
+            )
+            lines.append(f"  - File: `{issue.get('file', 'Unknown')}`")
+            lines.append(f"  - Line: {issue.get('line', 'Unknown')}")
+            lines.append(f"  - {issue.get('description', '')}")
+            lines.append(
+                f"  - **Suggestion:** {issue.get('suggestion', 'No suggestion provided.')}"
+            )
+            lines.append(f"  - Source: {issue.get('source', 'Unknown')}")
             lines.append("")
 
     lines.append("---")
@@ -179,15 +269,16 @@ def build_pr_review_comment(review: dict):
 
 def build_github_review_summary(review: dict):
     lines = []
+    issues = review.get("issues", [])
 
     lines.append("<!-- ai-code-reviewer -->")
     lines.append("# AI Code Review")
     lines.append("")
-    lines.append(f"**Overall Score:** {review['score']}/100")
-    lines.append(f"**Issues Found:** {len(review['issues'])}")
+    lines.append(f"**Overall Score:** {review.get('score', 100)}/100")
+    lines.append(f"**Issues Found:** {len(issues)}")
     lines.append("")
 
-    if not review["issues"]:
+    if not issues:
         lines.append("No issues were detected.")
     else:
         lines.append("## Review Summary")
@@ -195,20 +286,17 @@ def build_github_review_summary(review: dict):
 
         severity_counts = {}
 
-        for issue in review["issues"]:
-            severity = issue.get(
-                "severity",
-                "INFO",
-            ).upper()
+        for issue in issues:
+            severity = str(issue.get("severity", "info")).upper()
 
             severity_counts[severity] = severity_counts.get(severity, 0) + 1
 
-        for severity, count in severity_counts.items():
+        for severity, count in sorted(severity_counts.items()):
             lines.append(f"- **{severity}:** {count}")
 
         lines.append("")
         lines.append(
-            "Detailed findings are attached as " "inline comments on the changed lines."
+            "Detailed findings are attached as inline comments on the changed lines."
         )
 
     lines.append("")

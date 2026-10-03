@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { GitBranch } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-
+import { useGlobalLoader } from "../context/LoaderContext";
 import { getUser } from "../services/api";
 
 type User = {
@@ -49,6 +49,7 @@ function SettingsPage() {
   const [preferences, setPreferences] =
     useState<ReviewPreferences>(defaultPreferences);
   const [display, setDisplay] = useState<ReviewDisplay>(defaultDisplay);
+  const { showLoader, hideLoader } = useGlobalLoader();
 
   useEffect(() => {
     async function loadSettings() {
@@ -58,6 +59,8 @@ function SettingsPage() {
         navigate("/login", { replace: true });
         return;
       }
+
+      showLoader("Loading account settings...");
 
       try {
         const parsedUser = JSON.parse(storedUser) as User;
@@ -99,11 +102,13 @@ function SettingsPage() {
       } catch {
         localStorage.removeItem("user");
         navigate("/login", { replace: true });
+      } finally {
+        hideLoader();
       }
     }
 
     loadSettings();
-  }, [navigate]);
+  }, [navigate, showLoader, hideLoader]);
 
   function updatePreference(key: keyof ReviewPreferences, value: boolean) {
     if (!user) {

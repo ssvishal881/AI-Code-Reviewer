@@ -1,5 +1,5 @@
 import { AlertCircle, ArrowRight, FileSearch, SearchX } from "lucide-react";
-
+import { useGlobalLoader } from "../context/LoaderContext";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { getReviews } from "../services/api";
@@ -18,13 +18,15 @@ function HistoryPage() {
   const [reviews, setReviews] = useState<ReviewHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
+  const { showLoader, hideLoader } = useGlobalLoader();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [scoreFilter, setScoreFilter] = useState("all");
 
   useEffect(() => {
     const loadReviews = async () => {
+      showLoader("Loading review history...");
+
       try {
         const data = await getReviews();
         setReviews([...data].reverse());
@@ -32,11 +34,12 @@ function HistoryPage() {
         setError("Failed to load review history.");
       } finally {
         setLoading(false);
+        hideLoader();
       }
     };
 
     loadReviews();
-  }, []);
+  }, [showLoader, hideLoader]);
 
   const filteredReviews = useMemo(() => {
     return reviews.filter((review) => {

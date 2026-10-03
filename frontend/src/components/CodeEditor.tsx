@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ArrowRight, Upload } from "lucide-react";
 import { reviewCode } from "../services/api";
 import type { ReviewResult } from "../types/review";
+import { useGlobalLoader } from "../context/LoaderContext";
 
 type Props = {
   onReviewComplete: (review: ReviewResult) => void;
@@ -9,6 +10,7 @@ type Props = {
 
 function CodeEditor({ onReviewComplete }: Props) {
   const [fileName, setFileName] = useState("example.js");
+  const { showLoader, hideLoader } = useGlobalLoader();
 
   const [code, setCode] = useState(
     "const password = '12345';\nconsole.log(password);",
@@ -40,15 +42,16 @@ function CodeEditor({ onReviewComplete }: Props) {
   const handleReview = async () => {
     setLoading(true);
     setError("");
+    showLoader("Analyzing source code...");
 
     try {
       const result = await reviewCode(fileName, code);
-
       onReviewComplete(result);
     } catch {
       setError("Something went wrong while reviewing the code.");
     } finally {
       setLoading(false);
+      hideLoader();
     }
   };
 

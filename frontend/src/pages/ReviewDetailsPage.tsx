@@ -4,6 +4,7 @@ import { AlertCircle, ArrowLeft, ArrowRight, CircleCheck } from "lucide-react";
 import { getReview } from "../services/api";
 import type { ReviewDetails } from "../types/review";
 import { getStoredUser, loadSetting } from "../storage";
+import { useGlobalLoader } from "../context/LoaderContext";
 
 type ReviewDisplay = {
   showSeverity: boolean;
@@ -58,6 +59,7 @@ function ReviewDetailsPage() {
 
   const [loading, setLoading] = useState(isValidReviewId);
   const [fetchError, setFetchError] = useState("");
+  const { showLoader, hideLoader } = useGlobalLoader();
 
   useEffect(() => {
     if (!isValidReviewId) {
@@ -67,6 +69,8 @@ function ReviewDetailsPage() {
     let cancelled = false;
 
     async function loadReview() {
+      showLoader("Loading review details...");
+
       try {
         setLoading(true);
         setFetchError("");
@@ -84,6 +88,7 @@ function ReviewDetailsPage() {
         if (!cancelled) {
           setLoading(false);
         }
+        hideLoader();
       }
     }
 
@@ -92,7 +97,7 @@ function ReviewDetailsPage() {
     return () => {
       cancelled = true;
     };
-  }, [id, isValidReviewId]);
+  }, [id, isValidReviewId, showLoader, hideLoader]);
 
   const error = !isValidReviewId
     ? "A valid review ID is required."

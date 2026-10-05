@@ -45,7 +45,9 @@ def create_ai_review(
 ):
     try:
         ai_result = review_code(data.code, data.file_name)
+        print("AI review result:", ai_result, flush=True)
     except Exception as exc:
+        print(f"AI REVIEW EXCEPTION: {type(exc).__name__}: {exc}", flush=True)
         raise HTTPException(
             status_code=503,
             detail=f"AI review failed: {exc}",

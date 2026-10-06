@@ -10,13 +10,16 @@ def calculate_score(issues: list) -> int:
         "low": 5,
     }
 
+    if not issues:
+        return 100
+
     score = 100
 
     for issue in issues:
         severity = str(issue.get("severity", "low")).lower()
         score -= deductions.get(severity, 0)
 
-    return max(0, score)
+    return max(0, min(100, score))
 
 
 def normalize_text(value: str) -> str:
@@ -26,9 +29,22 @@ def normalize_text(value: str) -> str:
 
 
 def remove_duplicates(issues: list) -> list:
+    if not issues:
+        return []
+
     unique_issues = []
 
+    severity_rank = {
+        "low": 1,
+        "medium": 2,
+        "high": 3,
+        "critical": 4,
+    }
+
     for issue in issues:
+        if not isinstance(issue, dict):
+            continue
+
         file_name = normalize_text(issue.get("file", ""))
         title = normalize_text(issue.get("title", ""))
         description = normalize_text(issue.get("description", ""))
@@ -49,8 +65,8 @@ def remove_duplicates(issues: list) -> list:
             same_title = title == existing_title
 
             similar_description = (
-                description
-                and existing_description
+                bool(description)
+                and bool(existing_description)
                 and SequenceMatcher(
                     None,
                     description,
@@ -74,13 +90,6 @@ def remove_duplicates(issues: list) -> list:
 
         existing = unique_issues[duplicate_index]
 
-        severity_rank = {
-            "low": 1,
-            "medium": 2,
-            "high": 3,
-            "critical": 4,
-        }
-
         existing_severity = str(existing.get("severity", "low")).lower()
 
         current_severity = str(issue.get("severity", "low")).lower()
@@ -91,12 +100,16 @@ def remove_duplicates(issues: list) -> list:
             existing["severity"] = current_severity
 
         sources = set()
+
         for item in (existing, issue):
             source = str(item.get("source", "")).strip()
-        if source:
-            sources.update(part.strip() for part in source.split(",") if part.strip())
+
+            if source:
+                sources.update(
+                    part.strip() for part in source.split(",") if part.strip()
+                )
 
         if sources:
             existing["source"] = ", ".join(sorted(sources))
 
-        return unique_issues
+    return unique_issues

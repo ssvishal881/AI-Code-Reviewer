@@ -658,7 +658,7 @@ function SettingsPage() {
                         <button
                           type="button"
                           onClick={() => {
-                            window.location.href = `http://localhost:8000/auth/github/login?user_id=${user.id}`;
+                            window.location.href = `https://ai-code-reviewer-api-wrn1.onrender.com/auth/github/login?user_id=${user.id}`;
                           }}
                           className="border border-[#00dbe9] bg-[#00dbe9] px-4 py-2 font-mono text-[11px] font-semibold uppercase tracking-[0.05em] text-[#002022] transition hover:bg-[#00f0ff] md:text-xs lg:text-sm"
                         >

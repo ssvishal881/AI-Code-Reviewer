@@ -1,5 +1,7 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from app.core.security import get_current_user
+from app.models.user import User
 from app.schemas.ai_review import AIReviewRequest
 from app.services.semgrep_analyzer import run_semgrep
 
@@ -10,7 +12,10 @@ router = APIRouter(
 
 
 @router.post("/")
-def analyze_with_semgrep(data: AIReviewRequest):
+def analyze_with_semgrep(
+    data: AIReviewRequest,
+    current_user: User = Depends(get_current_user),
+):
     issues = run_semgrep(
         code=data.code,
         file_name=data.file_name,

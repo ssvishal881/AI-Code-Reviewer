@@ -12,6 +12,9 @@ import {
 
 const API_URL = import.meta.env.VITE_API_URL;
 
+const autofillFix =
+  "[&:-webkit-autofill]:shadow-[0_0_0_1000px_#070d1f_inset] [&:-webkit-autofill]:[-webkit-text-fill-color:#dce1fb] [&:-webkit-autofill:hover]:shadow-[0_0_0_1000px_#070d1f_inset] [&:-webkit-autofill:focus]:shadow-[0_0_0_1000px_#070d1f_inset] [&:-webkit-autofill:active]:shadow-[0_0_0_1000px_#070d1f_inset]";
+
 function RegisterPage() {
   const navigate = useNavigate();
 
@@ -252,7 +255,7 @@ function RegisterPage() {
                     autoComplete="name"
                     required
                     disabled={loading}
-                    className="min-w-0 flex-1 bg-transparent px-3 py-3 text-base text-[#dce1fb] outline-none placeholder:text-[#53636a] disabled:opacity-60 md:text-lg"
+                    className={`min-w-0 flex-1 bg-transparent px-3 py-3 text-base text-[#dce1fb] outline-none placeholder:text-[#53636a] disabled:opacity-60 md:text-lg ${autofillFix}`}
                   />
                 </div>
               </div>
@@ -278,7 +281,7 @@ function RegisterPage() {
                     autoComplete="email"
                     required
                     disabled={loading}
-                    className="min-w-0 flex-1 bg-transparent px-3 py-3 text-base text-[#dce1fb] outline-none placeholder:text-[#53636a] disabled:opacity-60 md:text-lg"
+                    className={`min-w-0 flex-1 bg-transparent px-3 py-3 text-base text-[#dce1fb] outline-none placeholder:text-[#53636a] disabled:opacity-60 md:text-lg ${autofillFix}`}
                   />
                 </div>
               </div>
@@ -305,7 +308,7 @@ function RegisterPage() {
                     minLength={6}
                     required
                     disabled={loading}
-                    className="min-w-0 flex-1 bg-transparent px-3 py-3 text-base text-[#dce1fb] outline-none placeholder:text-[#53636a] disabled:opacity-60 md:text-lg"
+                    className={`min-w-0 flex-1 bg-transparent px-3 py-3 text-base text-[#dce1fb] outline-none placeholder:text-[#53636a] disabled:opacity-60 md:text-lg ${autofillFix}`}
                   />
                   <button
                     type="button"
@@ -346,7 +349,7 @@ function RegisterPage() {
                     minLength={6}
                     required
                     disabled={loading}
-                    className="min-w-0 flex-1 bg-transparent px-3 py-3 text-base text-[#dce1fb] outline-none placeholder:text-[#53636a] disabled:opacity-60 md:text-lg"
+                    className={`min-w-0 flex-1 bg-transparent px-3 py-3 text-base text-[#dce1fb] outline-none placeholder:text-[#53636a] disabled:opacity-60 md:text-lg ${autofillFix}`}
                   />
                   <button
                     type="button"

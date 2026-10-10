@@ -1,3 +1,4 @@
+import time
 from app.services.ai_reviewer import review_code
 from app.services.review_processor import (
     calculate_score,
@@ -122,6 +123,7 @@ def review_pull_request(files: list):
         semgrep_issues = []
 
         if "ai" in analyzers:
+            ai_started = time.perf_counter()
             try:
                 review_input = build_review_input(file)
                 result = review_code(
@@ -145,6 +147,12 @@ def review_pull_request(files: list):
                     "summary": f"AI review failed: {str(exc)}",
                     "issues": [],
                 }
+            finally:
+                print(
+                    f"[PR REVIEW] Gemini {file_name}: "
+                    f"{time.perf_counter() - ai_started:.2f}s",
+                    flush=True,
+                )
 
             if not ai_result.get("success", False):
                 analysis_warnings.append(
@@ -152,6 +160,7 @@ def review_pull_request(files: list):
                 )
 
         if "eslint" in analyzers:
+            eslint_started = time.perf_counter()
             eslint_issues, eslint_error = run_analyzer_safely(
                 analyzer=run_eslint,
                 code=content,
@@ -159,15 +168,28 @@ def review_pull_request(files: list):
                 analyzer_name="ESLint",
             )
 
+            print(
+                f"[PR REVIEW] ESLint {file_name}: "
+                f"{time.perf_counter() - eslint_started:.2f}s",
+                flush=True,
+            )
+
             if eslint_error:
                 analysis_warnings.append(eslint_error)
 
         if "semgrep" in analyzers:
+            semgrep_started = time.perf_counter()
             semgrep_issues, semgrep_error = run_analyzer_safely(
                 analyzer=run_semgrep,
                 code=content,
                 file_name=file_name,
                 analyzer_name="Semgrep",
+            )
+
+            print(
+                f"[PR REVIEW] Semgrep {file_name}: "
+                f"{time.perf_counter() - semgrep_started:.2f}s",
+                flush=True,
             )
 
             if semgrep_error:

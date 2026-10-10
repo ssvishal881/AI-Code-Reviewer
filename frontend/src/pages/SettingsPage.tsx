@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react";
-import { GitBranch } from "lucide-react";
+import { GitBranch, AlertTriangle, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useGlobalLoader } from "../context/LoaderContext";
-import { getUser } from "../services/api";
+import {
+  getUser,
+  getGitHubConnectUrl,
+  disconnectGitHub,
+} from "../services/api";
 
 type User = {
   id: number;
@@ -51,6 +55,11 @@ function SettingsPage() {
   const [display, setDisplay] = useState<ReviewDisplay>(defaultDisplay);
   const { showLoader, hideLoader } = useGlobalLoader();
 
+  // Modal state
+  const [isDisconnectModalOpen, setIsDisconnectModalOpen] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [disconnectError, setDisconnectError] = useState("");
+
   useEffect(() => {
     async function loadSettings() {
       const storedUser = localStorage.getItem("user");
@@ -63,8 +72,7 @@ function SettingsPage() {
       showLoader("Loading account settings...");
 
       try {
-        const parsedUser = JSON.parse(storedUser) as User;
-        const latestUser = await getUser(parsedUser.id);
+        const latestUser = await getUser();
 
         setUser(latestUser);
         localStorage.setItem("user", JSON.stringify(latestUser));
@@ -99,8 +107,11 @@ function SettingsPage() {
             localStorage.setItem(displayKey, JSON.stringify(defaultDisplay));
           }
         }
-      } catch {
+      } catch (error) {
+        console.error("Settings load failed:", error);
         localStorage.removeItem("user");
+        localStorage.removeItem("access_token");
+
         navigate("/login", { replace: true });
       } finally {
         hideLoader();
@@ -109,6 +120,22 @@ function SettingsPage() {
 
     loadSettings();
   }, [navigate, showLoader, hideLoader]);
+
+  // Close modal on Escape key
+  useEffect(() => {
+    if (!isDisconnectModalOpen) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !disconnecting) {
+        closeDisconnectModal();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isDisconnectModalOpen, disconnecting]);
 
   function updatePreference(key: keyof ReviewPreferences, value: boolean) {
     if (!user) {
@@ -148,8 +175,49 @@ function SettingsPage() {
 
   function handleLogout() {
     localStorage.removeItem("user");
+    localStorage.removeItem("access_token");
     navigate("/login", { replace: true });
     window.location.reload();
+  }
+
+  function openDisconnectModal() {
+    setDisconnectError("");
+    setIsDisconnectModalOpen(true);
+  }
+
+  function closeDisconnectModal() {
+    if (disconnecting) {
+      return;
+    }
+    setIsDisconnectModalOpen(false);
+    setDisconnectError("");
+  }
+
+  async function confirmDisconnect() {
+    if (!user) {
+      return;
+    }
+
+    setDisconnectError("");
+    setDisconnecting(true);
+
+    try {
+      await disconnectGitHub();
+
+      const updatedUser = { ...user, github_login: null };
+      setUser(updatedUser);
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+
+      setIsDisconnectModalOpen(false);
+    } catch (error) {
+      setDisconnectError(
+        error instanceof Error
+          ? error.message
+          : "Failed to disconnect GitHub. Please try again.",
+      );
+    } finally {
+      setDisconnecting(false);
+    }
   }
 
   if (!user) {
@@ -645,10 +713,20 @@ function SettingsPage() {
 
                   <div className="flex items-center gap-3">
                     {user.github_login ? (
-                      <span className="flex items-center gap-2 border border-[#65f2b5]/30 bg-[#65f2b5]/10 px-3 py-2 font-mono text-[11px] font-semibold uppercase tracking-[0.05em] text-[#65f2b5] md:text-xs lg:text-sm">
-                        <span className="h-1.5 w-1.5 rounded-full bg-[#65f2b5] shadow-[0_0_8px_#65f2b5]" />
-                        Connected
-                      </span>
+                      <>
+                        <span className="flex items-center gap-2 border border-[#65f2b5]/30 bg-[#65f2b5]/10 px-3 py-2 font-mono text-[11px] font-semibold uppercase tracking-[0.05em] text-[#65f2b5] md:text-xs lg:text-sm">
+                          <span className="h-1.5 w-1.5 rounded-full bg-[#65f2b5] shadow-[0_0_8px_#65f2b5]" />
+                          Connected
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={openDisconnectModal}
+                          className="border border-[#ffb4ab]/40 bg-[#ffb4ab]/10 px-4 py-2 font-mono text-[11px] font-semibold uppercase tracking-[0.05em] text-[#ffb4ab] transition hover:bg-[#ffb4ab]/20 md:text-xs lg:text-sm"
+                        >
+                          Disconnect
+                        </button>
+                      </>
                     ) : (
                       <>
                         <span className="border border-[#3b494b] bg-[#151b2d] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.05em] text-[#849495] md:text-xs lg:text-sm">
@@ -657,8 +735,13 @@ function SettingsPage() {
 
                         <button
                           type="button"
-                          onClick={() => {
-                            window.location.href = `https://ai-code-reviewer-api-wrn1.onrender.com/auth/github/login?user_id=${user.id}`;
+                          onClick={async () => {
+                            try {
+                              window.location.href =
+                                await getGitHubConnectUrl();
+                            } catch (error) {
+                              console.error(error);
+                            }
                           }}
                           className="border border-[#00dbe9] bg-[#00dbe9] px-4 py-2 font-mono text-[11px] font-semibold uppercase tracking-[0.05em] text-[#002022] transition hover:bg-[#00f0ff] md:text-xs lg:text-sm"
                         >
@@ -703,6 +786,101 @@ function SettingsPage() {
           </div>
         </div>
       </main>
+
+      {/* Disconnect confirmation modal */}
+      {isDisconnectModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="disconnect-modal-title"
+          aria-describedby="disconnect-modal-description"
+          onClick={closeDisconnectModal}
+        >
+          <div
+            className="w-full max-w-md border border-[#3b494b] bg-[#151b2d] shadow-[0_24px_80px_rgba(0,0,0,0.5)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-[#3b494b] px-5 py-4 sm:px-6">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center border border-[#ffb4ab]/30 bg-[#ffb4ab]/10">
+                  <AlertTriangle
+                    className="h-4 w-4 text-[#ffb4ab]"
+                    aria-hidden="true"
+                  />
+                </div>
+
+                <div>
+                  <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-[#ffb4ab] md:text-xs lg:text-sm">
+                    WARNING
+                  </p>
+
+                  <h3
+                    id="disconnect-modal-title"
+                    className="mt-0.5 font-['Space_Grotesk'] text-lg font-semibold text-[#dce1fb] md:text-xl"
+                  >
+                    Disconnect GitHub?
+                  </h3>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeDisconnectModal}
+                disabled={disconnecting}
+                aria-label="Close dialog"
+                className="p-1 text-[#849495] transition hover:text-[#dce1fb] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <X className="h-5 w-5" aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="px-5 py-5 sm:px-6">
+              <p
+                id="disconnect-modal-description"
+                className="text-sm leading-6 text-[#b9cacb] md:text-base md:leading-7"
+              >
+                PR reviews will stop until you reconnect. The stored GitHub
+                token will be revoked.
+              </p>
+
+              {disconnectError && (
+                <div
+                  role="alert"
+                  className="mt-4 flex gap-3 border border-[#ffb4ab]/30 bg-[#ffb4ab]/5 p-3"
+                >
+                  <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center text-[#ffb4ab]">
+                    <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                  <p className="text-sm leading-5 text-[#ffb4ab]/90">
+                    {disconnectError}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col-reverse gap-3 border-t border-[#3b494b] px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
+              <button
+                type="button"
+                onClick={closeDisconnectModal}
+                disabled={disconnecting}
+                className="w-full border border-[#3b494b] bg-[#151b2d] px-4 py-2.5 font-mono text-[11px] font-semibold uppercase tracking-[0.06em] text-[#dce1fb] transition hover:bg-[#191f31] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto md:text-xs lg:text-sm"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={confirmDisconnect}
+                disabled={disconnecting}
+                className="w-full border border-[#ffb4ab] bg-[#ffb4ab] px-4 py-2.5 font-mono text-[11px] font-semibold uppercase tracking-[0.06em] text-[#3a0f0c] transition hover:bg-[#ffc9c2] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto md:text-xs lg:text-sm"
+              >
+                {disconnecting ? "Disconnecting..." : "Disconnect"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

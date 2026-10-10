@@ -50,3 +50,5 @@ class User(Base):
         nullable=True,
         index=True,
     )
+
+    github_access_token: Mapped[str | None] = mapped_column(String, nullable=True)

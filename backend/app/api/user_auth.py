@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
-
+from app.core.security import create_access_token
 from app.db.database import get_db
 from app.models.user import User
+from app.core.security import get_current_user
 from app.schemas.auth import (
     RegisterRequest,
     LoginRequest,
@@ -78,9 +79,13 @@ def login(
             detail="Invalid email or password",
         )
 
+    access_token = create_access_token(user.id)
+
     return {
         "message": "Login successful",
         "user": user,
+        "access_token": access_token,
+        "token_type": "bearer",
     }
 
 
@@ -88,16 +93,7 @@ def login(
     "/me",
     response_model=UserResponse,
 )
-def get_current_user(
-    user_id: int,
-    db: Session = Depends(get_db),
+def read_current_user(
+    current_user: User = Depends(get_current_user),
 ):
-    user = db.query(User).filter(User.id == user_id).first()
-
-    if not user:
-        raise HTTPException(
-            status_code=404,
-            detail="User not found",
-        )
-
-    return user
+    return current_user

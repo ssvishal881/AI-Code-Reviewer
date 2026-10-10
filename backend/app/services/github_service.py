@@ -9,21 +9,23 @@ GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_API_URL = "https://api.github.com"
 
 
-def github_headers():
-    if not GITHUB_TOKEN:
-        raise ValueError("GITHUB_TOKEN is not configured")
+def github_headers(access_token: str | None = None):
+    token = access_token or GITHUB_TOKEN
+
+    if not token:
+        raise ValueError("GitHub access token is not configured")
 
     return {
-        "Authorization": f"Bearer {GITHUB_TOKEN}",
+        "Authorization": f"Bearer {token}",
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
     }
 
 
-def get_github_user():
+def get_github_user(access_token: str | None = None):
     response = httpx.get(
         f"{GITHUB_API_URL}/user",
-        headers=github_headers(),
+        headers=github_headers(access_token),
         timeout=10,
     )
 
@@ -32,10 +34,10 @@ def get_github_user():
     return response.json()
 
 
-def get_github_repositories():
+def get_github_repositories(access_token: str | None = None):
     response = httpx.get(
         f"{GITHUB_API_URL}/user/repos",
-        headers=github_headers(),
+        headers=github_headers(access_token),
         params={
             "sort": "updated",
             "direction": "desc",
@@ -70,12 +72,13 @@ def get_pull_request_files(
     owner: str,
     repo: str,
     pull_number: int,
+    access_token: str | None = None,
 ):
     url = f"{GITHUB_API_URL}/repos/" f"{owner}/{repo}/pulls/{pull_number}/files"
 
     response = httpx.get(
         url,
-        headers=github_headers(),
+        headers=github_headers(access_token),
         timeout=10,
     )
 
@@ -88,11 +91,13 @@ def get_pull_request_changes(
     owner: str,
     repo: str,
     pull_number: int,
+    access_token: str | None = None,
 ):
     files = get_pull_request_files(
         owner,
         repo,
         pull_number,
+        access_token=access_token,
     )
 
     changes = []
@@ -116,12 +121,13 @@ def get_file_content(
     repo: str,
     file_path: str,
     ref: str,
+    access_token: str | None = None,
 ):
     url = f"{GITHUB_API_URL}/repos/" f"{owner}/{repo}/contents/{file_path}"
 
     response = httpx.get(
         url,
-        headers=github_headers(),
+        headers=github_headers(access_token),
         params={"ref": ref},
         timeout=10,
     )
@@ -142,12 +148,13 @@ def get_pull_request(
     owner: str,
     repo: str,
     pull_number: int,
+    access_token: str | None = None,
 ):
     url = f"{GITHUB_API_URL}/repos/" f"{owner}/{repo}/pulls/{pull_number}"
 
     response = httpx.get(
         url,
-        headers=github_headers(),
+        headers=github_headers(access_token),
         timeout=10,
     )
 
@@ -160,11 +167,13 @@ def get_pull_request_file_contents(
     owner: str,
     repo: str,
     pull_number: int,
+    access_token: str | None = None,
 ):
     pull_request = get_pull_request(
         owner,
         repo,
         pull_number,
+        access_token=access_token,
     )
 
     ref = pull_request["head"]["sha"]
@@ -173,6 +182,7 @@ def get_pull_request_file_contents(
         owner,
         repo,
         pull_number,
+        access_token=access_token,
     )
 
     files = []
@@ -199,6 +209,7 @@ def get_pull_request_file_contents(
                 repo=repo,
                 file_path=file_path,
                 ref=ref,
+                access_token=access_token,
             )
 
             files.append(
@@ -231,12 +242,13 @@ def get_pull_request_comments(
     owner: str,
     repo: str,
     pull_number: int,
+    access_token: str | None = None,
 ):
     url = f"{GITHUB_API_URL}/repos/" f"{owner}/{repo}/issues/" f"{pull_number}/comments"
 
     response = httpx.get(
         url,
-        headers=github_headers(),
+        headers=github_headers(access_token),
         params={"per_page": 100},
         timeout=10,
     )
@@ -250,11 +262,13 @@ def find_ai_review_comment(
     owner: str,
     repo: str,
     pull_number: int,
+    access_token: str | None = None,
 ):
     comments = get_pull_request_comments(
         owner,
         repo,
         pull_number,
+        access_token=access_token,
     )
 
     marker = "<!-- ai-code-reviewer -->"
@@ -273,12 +287,37 @@ def update_pull_request_comment(
     repo: str,
     comment_id: int,
     body: str,
+    access_token: str | None = None,
 ):
     url = f"{GITHUB_API_URL}/repos/" f"{owner}/{repo}/issues/comments/" f"{comment_id}"
 
     response = httpx.patch(
         url,
-        headers=github_headers(),
+        headers=github_headers(access_token),
+        json={"body": body},
+        timeout=10,
+    )
+
+    response.raise_for_status()
+
+    return response.json()
+
+
+# NOTE: this function was called in your file but not defined in the code you
+# pasted. If you already have it elsewhere (e.g. a part of the file that was
+# cut off), keep ONE version only and make sure it matches this signature.
+def post_pull_request_comment(
+    owner: str,
+    repo: str,
+    pull_number: int,
+    body: str,
+    access_token: str | None = None,
+):
+    url = f"{GITHUB_API_URL}/repos/" f"{owner}/{repo}/issues/" f"{pull_number}/comments"
+
+    response = httpx.post(
+        url,
+        headers=github_headers(access_token),
         json={"body": body},
         timeout=10,
     )
@@ -293,11 +332,13 @@ def create_or_update_ai_review_comment(
     repo: str,
     pull_number: int,
     body: str,
+    access_token: str | None = None,
 ):
     existing_comment = find_ai_review_comment(
         owner,
         repo,
         pull_number,
+        access_token=access_token,
     )
 
     if existing_comment:
@@ -306,6 +347,7 @@ def create_or_update_ai_review_comment(
             repo=repo,
             comment_id=existing_comment["id"],
             body=body,
+            access_token=access_token,
         )
 
     return post_pull_request_comment(
@@ -313,13 +355,18 @@ def create_or_update_ai_review_comment(
         repo=repo,
         pull_number=pull_number,
         body=body,
+        access_token=access_token,
     )
 
 
-def get_github_pull_requests(owner: str, repo: str):
+def get_github_pull_requests(
+    owner: str,
+    repo: str,
+    access_token: str | None = None,
+):
     response = httpx.get(
         f"{GITHUB_API_URL}/repos/{owner}/{repo}/pulls",
-        headers=github_headers(),
+        headers=github_headers(access_token),
         params={
             "state": "open",
             "sort": "updated",
@@ -357,12 +404,13 @@ def create_pull_request_review_comment(
     path: str,
     line: int,
     side: str = "RIGHT",
+    access_token: str | None = None,
 ):
     url = f"{GITHUB_API_URL}/repos/" f"{owner}/{repo}/pulls/{pull_number}/comments"
 
     response = httpx.post(
         url,
-        headers=github_headers(),
+        headers=github_headers(access_token),
         json={
             "body": body,
             "commit_id": commit_id,
@@ -384,11 +432,13 @@ def prepare_inline_review_comments(
     pull_number: int,
     files: list,
     issues: list,
+    access_token: str | None = None,
 ):
     pull_request = get_pull_request(
         owner=owner,
         repo=repo,
         pull_number=pull_number,
+        access_token=access_token,
     )
 
     commit_id = pull_request["head"]["sha"]
@@ -488,11 +538,13 @@ def create_inline_review_comments(
     pull_number: int,
     files: list,
     issues: list,
+    access_token: str | None = None,
 ):
     pull_request = get_pull_request(
         owner,
         repo,
         pull_number,
+        access_token=access_token,
     )
 
     commit_id = pull_request["head"]["sha"]
@@ -598,12 +650,13 @@ def create_pull_request_review(
     commit_id: str,
     comments: list,
     event: str = "COMMENT",
+    access_token: str | None = None,
 ):
     url = f"{GITHUB_API_URL}/repos/" f"{owner}/{repo}/pulls/{pull_number}/reviews"
 
     response = httpx.post(
         url,
-        headers=github_headers(),
+        headers=github_headers(access_token),
         json={
             "body": body,
             "commit_id": commit_id,

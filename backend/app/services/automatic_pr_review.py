@@ -1,3 +1,7 @@
+import traceback
+
+import httpx
+
 from app.db.database import SessionLocal
 from app.models.review import Review
 from app.models.user import User
@@ -23,10 +27,24 @@ def run_automatic_pr_review(
     try:
         print(f"Starting automatic review for " f"{owner}/{repo} PR #{pull_number}")
 
+        # Find the application user who owns this repository.
+        # Without a connected GitHub token we skip the review, so the
+        # global GITHUB_TOKEN is never used for automatic reviews.
+        user = db.query(User).filter(User.github_login == owner).first()
+
+        if not user or not user.github_access_token:
+            print(f"No connected GitHub user for owner '{owner}'. Skipping review.")
+            return
+
+        access_token = user.github_access_token
+
+        print(f"Review belongs to user " f"{user.id} ({user.github_login})")
+
         pull_request = get_pull_request(
             owner=owner,
             repo=repo,
             pull_number=pull_number,
+            access_token=access_token,
         )
 
         commit_sha = pull_request["head"]["sha"]
@@ -53,17 +71,11 @@ def run_automatic_pr_review(
             )
             return
 
-        user = db.query(User).filter(User.github_login == owner).first()
-
-        if user:
-            print(f"Review belongs to user " f"{user.id} ({user.github_login})")
-        else:
-            print(f"No application user found for " f"GitHub owner: {owner}")
-
         files = get_pull_request_file_contents(
             owner=owner,
             repo=repo,
             pull_number=pull_number,
+            access_token=access_token,
         )
 
         print(f"Files received: {len(files)}")
@@ -83,6 +95,7 @@ def run_automatic_pr_review(
             pull_number=pull_number,
             files=files,
             issues=issues,
+            access_token=access_token,
         )
 
         github_review = create_pull_request_review(
@@ -93,12 +106,13 @@ def run_automatic_pr_review(
             commit_id=inline_data["commit_id"],
             comments=inline_data["comments"],
             event="COMMENT",
+            access_token=access_token,
         )
 
         print(f"GitHub review created: " f"{github_review.get('id')}")
 
         database_review = Review(
-            user_id=user.id if user else None,
+            user_id=user.id,
             score=score,
             summary=(f"Automatic AI review for " f"{repo} PR #{pull_number}"),
             issues=issues,
@@ -114,9 +128,7 @@ def run_automatic_pr_review(
         db.refresh(database_review)
 
         print(f"Review saved to database: " f"ID {database_review.id}")
-
         print(f"Review user_id: " f"{database_review.user_id}")
-
         print(f"Inline comments created: " f"{len(inline_data['comments'])}")
 
     except Exception as error:
@@ -127,6 +139,15 @@ def run_automatic_pr_review(
             f"{owner}/{repo} PR #{pull_number}: "
             f"{error}"
         )
+
+        # GitHub explains 4xx errors (for example 422) in the response body.
+        if isinstance(error, httpx.HTTPStatusError):
+            print(
+                f"GitHub response ({error.response.status_code}): "
+                f"{error.response.text}"
+            )
+
+        traceback.print_exc()
 
     finally:
         db.close()

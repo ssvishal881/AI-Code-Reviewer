@@ -43,6 +43,8 @@ function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
         password,
       });
 
+      localStorage.setItem("access_token", data.access_token);
+
       onLogin(data.user);
       navigate("/dashboard");
     } catch (error) {
@@ -220,7 +222,11 @@ function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
                     autoComplete="email"
                     required
                     disabled={loading}
-                    className="min-w-0 flex-1 bg-transparent px-3 py-3.5 text-base text-[#dce1fb] outline-none placeholder:text-[#53636a] disabled:opacity-60 md:text-[15px] lg:text-[18px]"
+                    className="min-w-0 flex-1 bg-transparent px-3 py-3.5 text-base text-[#dce1fb] outline-none placeholder:text-[#53636a] disabled:opacity-60 md:text-[15px] lg:text-[18px] [&:-webkit-autofill]:shadow-[0_0_0_1000px_#070d1f_inset]
+  [&:-webkit-autofill]:[-webkit-text-fill-color:#dce1fb]
+  [&:-webkit-autofill:hover]:shadow-[0_0_0_1000px_#070d1f_inset]
+  [&:-webkit-autofill:focus]:shadow-[0_0_0_1000px_#070d1f_inset]
+  [&:-webkit-autofill:active]:shadow-[0_0_0_1000px_#070d1f_inset]"
                   />
                 </div>
               </div>
@@ -229,7 +235,11 @@ function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <label
                     htmlFor="password"
-                    className="font-mono text-xs font-semibold uppercase tracking-[0.12em] text-[#b9cacb] md:text-sm lg:text-base"
+                    className="font-mono text-xs font-semibold uppercase tracking-[0.12em] text-[#b9cacb] md:text-sm lg:text-base [&:-webkit-autofill]:shadow-[0_0_0_1000px_#070d1f_inset]
+  [&:-webkit-autofill]:[-webkit-text-fill-color:#dce1fb]
+  [&:-webkit-autofill:hover]:shadow-[0_0_0_1000px_#070d1f_inset]
+  [&:-webkit-autofill:focus]:shadow-[0_0_0_1000px_#070d1f_inset]
+  [&:-webkit-autofill:active]:shadow-[0_0_0_1000px_#070d1f_inset]"
                   >
                     Password
                   </label>

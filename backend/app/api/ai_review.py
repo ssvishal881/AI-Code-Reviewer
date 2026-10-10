@@ -7,6 +7,8 @@ from app.services.ai_reviewer import review_code
 from app.services.static_analyzer import run_eslint
 from app.services.semgrep_analyzer import run_semgrep
 from app.services.review_processor import calculate_score, remove_duplicates
+from app.core.security import get_current_user
+from app.models.user import User
 
 router = APIRouter(
     prefix="/ai-review",
@@ -40,7 +42,7 @@ def get_code_snippet(
 @router.post("/", response_model=AIReviewResponse)
 def create_ai_review(
     data: AIReviewRequest,
-    user_id: int = Query(...),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     try:
@@ -112,7 +114,7 @@ def create_ai_review(
         )
 
     review = Review(
-        user_id=user_id,
+        user_id=current_user.id,
         score=final_score,
         summary=summary,
         issues=combined_issues,

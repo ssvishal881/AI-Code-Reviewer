@@ -45,24 +45,29 @@ export type AuthUser = {
 export type LoginResponse = {
   message: string;
   user: AuthUser;
+  access_token: string;
+  token_type: string;
 };
+
+/* ---------- Auth helpers ---------- */
+
+export function getAuthHeaders(): Record<string, string> {
+  const token = localStorage.getItem("access_token");
+
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+/* ---------- Reviews ---------- */
 
 export async function reviewCode(
   fileName: string,
   code: string,
 ): Promise<ReviewResult> {
-  const storedUser = localStorage.getItem("user");
-
-  if (!storedUser) {
-    throw new Error("Please login to review code.");
-  }
-
-  const user = JSON.parse(storedUser) as AuthUser;
-
-  const response = await fetch(`${API_URL}/ai-review/?user_id=${user.id}`, {
+  const response = await fetch(`${API_URL}/ai-review/`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      ...getAuthHeaders(),
     },
     body: JSON.stringify({
       file_name: fileName,
@@ -82,7 +87,9 @@ export async function reviewCode(
 }
 
 export async function getReviews(): Promise<ReviewHistoryItem[]> {
-  const response = await fetch(`${API_URL}/reviews/`);
+  const response = await fetch(`${API_URL}/reviews/`, {
+    headers: getAuthHeaders(),
+  });
 
   if (!response.ok) {
     throw new Error("Failed to fetch reviews");
@@ -92,7 +99,9 @@ export async function getReviews(): Promise<ReviewHistoryItem[]> {
 }
 
 export async function getReview(id: number): Promise<ReviewDetails> {
-  const response = await fetch(`${API_URL}/reviews/${id}`);
+  const response = await fetch(`${API_URL}/reviews/${id}`, {
+    headers: getAuthHeaders(),
+  });
 
   if (!response.ok) {
     throw new Error("Failed to fetch review");
@@ -106,21 +115,13 @@ export async function reviewPullRequest(
   repo: string,
   pullNumber: number,
 ) {
-  const storedUser = localStorage.getItem("user");
-
-  if (!storedUser) {
-    throw new Error("Please login to review pull requests.");
-  }
-
-  const user = JSON.parse(storedUser) as AuthUser;
-
-  const url =
-    `${API_URL}/github/pr/${owner}/${repo}/${pullNumber}/full-review` +
-    `?user_id=${user.id}`;
+  const url = `${API_URL}/github/pr/${owner}/${repo}/${pullNumber}/full-review`;
 
   console.log("Starting PR review:", url);
 
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    headers: getAuthHeaders(),
+  });
   console.log("PR review response:", response.status, response.ok);
 
   if (!response.ok) {
@@ -136,11 +137,17 @@ export async function reviewPullRequest(
   return data;
 }
 
+/* ---------- GitHub ---------- */
+
 export async function getGitHubRepositories(): Promise<GitHubRepository[]> {
-  const response = await fetch(`${API_URL}/auth/github/repositories`);
+  const response = await fetch(`${API_URL}/auth/github/repositories`, {
+    headers: getAuthHeaders(),
+  });
 
   if (!response.ok) {
-    throw new Error("Failed to fetch GitHub repositories");
+    const data = await response.json().catch(() => null);
+
+    throw new Error(data?.detail || "Failed to fetch GitHub repositories");
   }
 
   const data = await response.json();
@@ -154,10 +161,15 @@ export async function getGitHubPullRequests(
 ): Promise<GitHubPullRequest[]> {
   const response = await fetch(
     `${API_URL}/auth/github/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls`,
+    {
+      headers: getAuthHeaders(),
+    },
   );
 
   if (!response.ok) {
-    throw new Error("Failed to fetch GitHub pull requests");
+    const data = await response.json().catch(() => null);
+
+    throw new Error(data?.detail || "Failed to fetch GitHub pull requests");
   }
 
   const data = await response.json();
@@ -168,7 +180,9 @@ export async function getGitHubPullRequests(
 export async function getUserReviews(
   userId: number,
 ): Promise<ReviewHistoryItem[]> {
-  const response = await fetch(`${API_URL}/reviews/user/${userId}`);
+  const response = await fetch(`${API_URL}/reviews/user/${userId}`, {
+    headers: getAuthHeaders(),
+  });
 
   if (!response.ok) {
     throw new Error("Failed to fetch user reviews");
@@ -177,6 +191,7 @@ export async function getUserReviews(
   return response.json();
 }
 
+/* ---------- Auth ---------- */
 export async function loginUser(
   loginData: LoginRequest,
 ): Promise<LoginResponse> {
@@ -194,16 +209,44 @@ export async function loginUser(
   }
 
   const data: LoginResponse = await response.json();
+
   localStorage.setItem("user", JSON.stringify(data.user));
+  localStorage.setItem("access_token", data.access_token);
+
   return data;
 }
 
-export async function getUser(userId: number): Promise<AuthUser> {
-  const response = await fetch(`${API_URL}/auth/me?user_id=${userId}`);
+export async function getUser(): Promise<AuthUser> {
+  const response = await fetch(`${API_URL}/auth/me`, {
+    headers: getAuthHeaders(),
+  });
 
   if (!response.ok) {
     throw new Error("Failed to fetch user");
   }
 
   return response.json();
+}
+
+export async function getGitHubConnectUrl(): Promise<string> {
+  const response = await fetch(`${API_URL}/auth/github/connect-url`, {
+    headers: getAuthHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error("Failed to start GitHub connection");
+  }
+  const data = await response.json();
+  return data.url;
+}
+
+export async function disconnectGitHub(): Promise<void> {
+  const response = await fetch(`${API_URL}/auth/github/disconnect`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.detail || "Failed to disconnect GitHub");
+  }
 }

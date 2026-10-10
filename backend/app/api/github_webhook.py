@@ -60,14 +60,10 @@ async def github_webhook(
     Receive and process GitHub webhook events.
     """
 
-    # Get GitHub event type
     event = request.headers.get("X-GitHub-Event")
 
-    # Read raw request body first.
-    # This is required for webhook signature verification.
     body = await request.body()
 
-    # Prevent JSONDecodeError when the body is empty.
     if not body:
         return JSONResponse(
             status_code=400,
